@@ -21,12 +21,10 @@ class BlindCommand(Enum):
 
 @dataclass
 class Blind:
-    type: str
     adr: str
     name: str
 
     def __init__(self, data: Dict):
-        self.type = data['type']
         self.adr = data['adr']
         self.name = data['name']
 

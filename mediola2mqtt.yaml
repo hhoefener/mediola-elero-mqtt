@@ -1,0 +1,35 @@
+mediola:
+  - host: 192.168.178.46
+    password:
+    follow_up_time: 5
+
+mqtt:
+  host: hildegard.fritz.box
+  port: 1883
+  username: hass
+  password: mqttdarfnichtjeder
+  discovery_prefix: homeassistant
+  topic: mediola
+  debug: false
+
+blinds:
+  - adr: "01"
+    name: Küche Links
+  - adr: "02"
+    name: Küche Rechts
+  - adr: "03"
+    name: Essbereich Terassentür
+  - adr: "04"
+    name: Essbereich Fenster
+  - adr: "05"
+    name: Wohnzimmer Terassentür
+  - adr: "06"
+    name: Wohnzimmer West Links
+  - adr: "07"
+    name: Wohnzimmer West Mitte
+  - adr: "08"
+    name: Wohnzimmer West Rechts
+  - adr: "09"
+    name: Wohnzimmer Nord Links
+  - adr: "10"
+    name: Wohnzimmer Nord Rechts
