@@ -1,6 +1,6 @@
 
 import datetime
-from threading import Timer, Thread
+import threading
 import time
 import json
 import requests
@@ -13,6 +13,7 @@ from utils import Blind, BlindCommand, BlindState
 class Mediola:
     host: str
     password: str
+    thread_stop_event: Optional[threading.Event] = None
     
     def __init__(self, host: str, password: str, follow_up_time: int):
         self.host = host
@@ -66,16 +67,16 @@ class Mediola:
             'data': format(int(blind.adr), "02x") + self.commandstrings[command]
         })
 
-    def get_blind_state(self, blind: Blind, follow_up_if_moving: bool, mqtt: Optional[MQTT]):
+    def get_blind_state(self, blind: Blind, follow_up_if_moving: bool, thread_stop_event: threading.Event, mqtt: Optional[MQTT]):
         state = self._request_blind_state(blind)
         if mqtt is not None:
             mqtt.publish_blind_state(blind, state)
         if follow_up_if_moving and state in (BlindState.OPENING, BlindState.CLOSING):
             print(f'{datetime.datetime.now()} Blind {blind} is moving ({state}). Starting another timer to follow up')
-            Timer(self.follow_up_time, self.get_blind_state, (blind, True, mqtt)).start()
+            threading.Timer(self.follow_up_time, self.get_blind_state, (blind, True, thread_stop_event, mqtt)).start()
         return state
 
-    def _move_blind(self, blind: Blind, command: BlindCommand, mqtt: Optional[MQTT]):
+    def _move_blind(self, blind: Blind, command: BlindCommand, thread_stop_event: threading.Event, mqtt: Optional[MQTT]):
         success_states = []
         if command == BlindCommand.OPEN:
             success_states.append(BlindState.OPENING)
@@ -90,12 +91,17 @@ class Mediola:
             print(f'{datetime.datetime.now()} sending command {command} for blind {blind}')
             self._command_blind(blind, command)
             time.sleep(1)
-            if self.get_blind_state(blind, follow_up_if_moving=True, mqtt=mqtt) in success_states:
+            if thread_stop_event.is_set():
+                return
+            if self.get_blind_state(blind, follow_up_if_moving=True, thread_stop_event=thread_stop_event, mqtt=mqtt) in success_states:
                 break
 
     def move_blind(self, blind: Blind, command: BlindCommand, mqtt: Optional[MQTT]):
         # perform moving blind in thread to enable immediate return.
         # Otherwise if multiple blinds are moved in a row, they need to wait until
         # preceeding blinds have confirmed that they are moving
-        Thread(target=self._move_blind, args=(blind, command, mqtt)).start()
+        if self.thread_stop_event is not None:
+            self.thread_stop_event.set()
+        self.thread_stop_event = threading.Event()
+        threading.Thread(target=self._move_blind, args=(blind, command, self.thread_stop_event, mqtt)).start()
 
