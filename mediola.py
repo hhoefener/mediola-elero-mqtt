@@ -90,7 +90,7 @@ class Mediola:
             print(f'{datetime.datetime.now()} sending command {command} for blind {blind}')
             self._command_blind(blind, command)
             time.sleep(1)
-            if self.get_blind_state(blind, follow_up_if_moving=True, mqtt=mqtt) not in success_states:
+            if self.get_blind_state(blind, follow_up_if_moving=True, mqtt=mqtt) in success_states:
                 break
 
     def move_blind(self, blind: Blind, command: BlindCommand, mqtt: Optional[MQTT]):
