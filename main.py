@@ -6,7 +6,7 @@ from utils import BlindCommand, load_config
 
 def main():
     config = load_config()
-    mediola = Mediola(config.mediola.host, config.mediola.password, config.mediola.follow_up_time)
+    mediola = Mediola(config.mediola.host, config.mediola.password, config.mediola.follow_up_time, debug=True)
     mqtt = MQTTdummy()
 
     for blind in config.blinds:
