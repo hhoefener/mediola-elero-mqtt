@@ -2,14 +2,17 @@
 import datetime
 import json
 from time import sleep
-from typing import Any, Dict, List, Optional
-from utils import Blind, BlindState, MQTTConfig, load_config
+from typing import Any, Callable, Dict, List, Optional, Type
+from utils import Blind, BlindCommand, BlindState, MQTTConfig, load_config
 import paho.mqtt.client as paho_mqtt
 
+MoveBlindCallback = Callable[[Blind, BlindCommand, Optional[Type['MQTT']]], None]
+
 class MQTT:
-    def __init__(self, config: MQTTConfig, blinds: List[Blind], debug: bool = False):
+    def __init__(self, config: MQTTConfig, blinds: List[Blind], move_blind_callback: Optional[MoveBlindCallback] = None, debug: bool = False):
         self.config = config
         self.blinds = blinds
+        self.move_blind_callback = move_blind_callback
         self.debug = debug
         self.mqtt_client = paho_mqtt.Client(callback_api_version=paho_mqtt.CallbackAPIVersion.VERSION2)
         self.init_callbacks()
@@ -18,14 +21,6 @@ class MQTT:
     def log(self, debug: bool = False, **kwargs: Any):
         if not debug or self.debug:
             print(datetime.datetime.now(), ' '.join(f'{key}={value}' for key, value in kwargs.items()))
-
-#    def log(self, debug: bool = False, *args: Any, **kwargs: Any):
-#        if not debug or self.debug:
-#            values = ' '.join(map(str, args))
-#            if kwargs:
-#                kwarg_values = ' '.join(f'{key}={value}' for key, value in kwargs.items())
-#                values = f'{values} {kwarg_values}'
-#            print(datetime.datetime.now(), values)
 
     def loop_start(self):
         self.mqtt_client.loop_start()
@@ -59,76 +54,50 @@ class MQTT:
     def on_message(self, client: paho_mqtt.Client, userdata: Any, message: paho_mqtt.MQTTMessage):
         # FIXME
         print("Msg: " + message.topic + " " + str(message.qos) + " " + str(message.payload))
-        # # Here we should send a HTTP request to Mediola to open the blind
-        # dtype, adr = message.topic.split("_")
-        # mediolaid = dtype.split("/")[-2]
-        # dtype = dtype[dtype.rfind("/")+1:]
-        # adr = adr[:adr.find("/")]
-        # for ii in range(0, len(config['blinds'])):
-        #     if dtype == config['blinds'][ii]['type'] and adr == config['blinds'][ii]['adr']:
-        #         if isinstance(config['mediola'], list):
-        #             if config['blinds'][ii]['mediola'] != mediolaid:
-        #                 continue
-        #         if message.payload == b'open':
-        #             if dtype == 'RT':
-        #                 data = "20" + adr
-        #             elif dtype == 'ER':
-        #                 data = format(int(adr), "02x") + "01"
-        #             else:
-        #                 return
-        #         elif message.payload == b'close':
-        #             if dtype == 'RT':
-        #                 data = "40" + adr
-        #             elif dtype == 'ER':
-        #                 data = format(int(adr), "02x") + "00"
-        #             else:
-        #                 return
-        #         elif message.payload == b'stop':
-        #             if dtype == 'RT':
-        #                 data = "10" + adr
-        #             elif dtype == 'ER':
-        #                 data = format(int(adr), "02x") + "02"
-        #             else:
-        #                 return
-        #         else:
-        #             print("Wrong command")
-        #             return
-        #         payload = {
-        #         "XC_FNC" : "SendSC",
-        #         "type" : dtype,
-        #         "data" : data
-        #         }
-        #         host = ''
-        #         if isinstance(config['mediola'], list):
-        #             mediolaid = config['blinds'][ii]['mediola']
-        #             for jj in range(0, len(config['mediola'])):
-        #                 if mediolaid == config['mediola'][jj]['id']:
-        #                     host = config['mediola'][jj]['host']
-        #                 if 'password' in config['mediola'][jj] and config['mediola'][jj]['password'] != '':
-        #                     payload['XC_PASS'] = config['mediola'][jj]['password']
-        #         else:
-        #             host = config['mediola']['host']
-        #             if 'password' in config['mediola'] and config['mediola']['password'] != '':
-        #                 payload['XC_PASS'] = config['mediola']['password']
-        #         if host == '':
-        #             print('Error: Could not find matching Mediola!')
-        #             return
-        #         url = 'http://' + host + '/command'
-        #         response = requests.get(url, params=payload, headers={'Connection':'close'})
+
+        topic_parts = message.topic.split('/')
+        if len(topic_parts) != 5 or topic_parts[0] != self.config.topic or topic_parts[1] != 'blinds' or topic_parts[2] != 'mediola1' or topic_parts[4] != 'set': # FIXME mediola1 -> mediola
+            self.log(debug=False, error=f'got invalid topic: {message.topic}')
+            return
+        blind_id_parts = topic_parts[3].split('_')
+        if len(blind_id_parts) != 2 or blind_id_parts[0] != 'ER':
+            self.log(debug=False, error=f'got invalid blind id: {message.topic}')
+            return
+        
+        blind_adr = blind_id_parts[1]
+        blind = next((b for b in self.blinds if b.adr == blind_adr), [None])
+        if blind is None:
+            self.log(debug=False, error=f'cannot find blind with adress {blind_adr}')
+            return
+        
+        command = None
+        if message.payload == b'open':
+            command = BlindCommand.OPEN
+        elif message.payload == b'close':
+            command = BlindCommand.CLOSE
+        elif message.payload == b'stop':
+            command = BlindCommand.STOP
+        if command is None:
+            self.log(debug=False, error=f'cannot interpret payload (command) {message.payload.decode("utf-8")}')
+            return        
+
+        if self.move_blind_callback is not None:
+            self.move_blind_callback(blind, command, self)
+
 
     def setup_discovery(self):
         for blind in self.blinds:
             identifier = f'ER_{blind.adr}'
             deviceid = f'mediola_blinds_{self.config.host.replace(".", "")}'
             dtopic = f'{self.config.discovery_prefix}/cover/mediola_{identifier}/config'
-            topic = f'{self.config.topic}/blinds/mediola/{identifier}'
+            topic = f'{self.config.topic}/blinds/mediola1/{identifier}' # FIXME mediola1 -> mediola
 
             payload = {
                 'command_topic': f'{topic}/set',
                 'payload_open': 'open',
                 'payload_close': 'close',
                 'payload_stop': 'stop',
-                'optimistic': True,
+                'optimistic': False,
                 'device_class': 'blind',
                 'unique_id': f'mediola_{identifier}',
                 'name': blind.name,
@@ -145,7 +114,7 @@ class MQTT:
         
     def publish_blind_state(self, blind: Blind, state: BlindState):
         identifier = f'ER_{blind.adr}'
-        topic = f'{self.config.topic}/blinds/mediola/{identifier}/state'
+        topic = f'{self.config.topic}/blinds/mediola1/{identifier}/state' # FIXME mediola1 -> mediola
         self.mqtt_client.publish(topic, payload=state.text, retain=True)
         self.log(debug=True, args=f'Published state {state} for blind {blind} to topic {topic}')
 
@@ -163,5 +132,5 @@ if __name__ == '__main__':
     m = MQTT(config.mqtt, config.blinds, debug=True)
     m.loop_start()
     sleep(5)
-    m.publish_blind_state(config.blinds[0], BlindState.OPENED)
+    m.publish_blind_state(config.blinds[2], BlindState.CLOSED)
     sleep(5)
