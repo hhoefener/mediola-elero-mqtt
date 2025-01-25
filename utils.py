@@ -5,14 +5,21 @@ from typing import Dict, List
 
 import yaml
 
-
 class BlindState(Enum):
-    OPENED = 1
-    CLOSED = 2
-    OPENING = 3
-    CLOSING = 4
-    STOPPED = 5
-    UNKNOWN = 6
+    OPENED = (0, "opened")
+    CLOSED = (1, "closed")
+    OPENING = (2, "opening")
+    CLOSING = (3, "closing")
+    STOPPED = (4, "stopped")
+    UNKNOWN = (5, "unknown")
+
+    def __init__(self, state_code, state_text):
+        self.state_code = state_code
+        self.state_text = state_text
+
+    @property
+    def text(self):
+        return self.state_text
 
 class BlindCommand(Enum):
     OPEN = 1

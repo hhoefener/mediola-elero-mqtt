@@ -4,7 +4,7 @@ import threading
 import time
 import json
 import requests
-from typing import Optional
+from typing import Any, Optional
 
 from mqtt import MQTT
 from utils import Blind, BlindCommand, BlindState
@@ -27,9 +27,14 @@ class Mediola:
             BlindCommand.STOP: "02"
         }
 
-    def log(self, *values: object, debug: bool):
+    def log(self, debug: bool = False, *args: Any, **kwargs: Any):
         if not debug or self.debug:
-            print(values)
+            values = ' '.join(map(str, args))
+            if kwargs:
+                kwarg_values = ' '.join(f'{key}={value}' for key, value in kwargs.items())
+                values = f'{values} {kwarg_values}'
+            print(datetime.datetime.now(), values)
+    
     
     def _request(self, payload: dict) -> dict:
         url = 'http://' + self.host + '/command'
@@ -41,7 +46,7 @@ class Mediola:
         if len(response.text) > 8:
             return json.loads(response.text[8:])
         else:
-            self.log(f'{datetime.datetime.now()} no response payload. Got response "{response.text}" for request payload {payload}', debug=True)
+            self.log(f'no response payload. Got response "{response.text}" for request payload {payload}', debug=True)
             return {}
     
     def _request_blind_state(self, blind: Blind) -> BlindState:
