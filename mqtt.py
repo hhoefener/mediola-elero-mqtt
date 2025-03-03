@@ -1,18 +1,28 @@
 
 import datetime
 import json
+import threading
 from time import sleep
 from typing import Any, Callable, Dict, List, Optional, Type
 from utils import Blind, BlindCommand, BlindState, MQTTConfig, load_config
 import paho.mqtt.client as paho_mqtt
 
 MoveBlindCallback = Callable[[Blind, BlindCommand, Optional[Type['MQTT']]], None]
+UpdateAndPublishBlindStateCallback = Callable[[Blind, bool, threading.Event, Optional[Type['MQTT']]], None]
 
 class MQTT:
-    def __init__(self, config: MQTTConfig, blinds: List[Blind], move_blind_callback: Optional[MoveBlindCallback] = None, debug: bool = False):
+    def __init__(
+            self,
+            config: MQTTConfig,
+            blinds: List[Blind],
+            move_blind_callback: Optional[MoveBlindCallback] = None,
+            update_and_publish_blind_state_callback: Optional[UpdateAndPublishBlindStateCallback] = None,
+            debug: bool = False
+            ):
         self.config = config
         self.blinds = blinds
         self.move_blind_callback = move_blind_callback
+        self.update_and_publish_blind_state_callback = update_and_publish_blind_state_callback
         self.debug = debug
         self.mqtt_client = paho_mqtt.Client(callback_api_version=paho_mqtt.CallbackAPIVersion.VERSION2)
         self.init_callbacks()
@@ -45,6 +55,10 @@ class MQTT:
         if reason_code.is_failure:
             raise ValueError(f'Error on connecting to MQTT broker: {reason_code.getName()}')
         self.setup_discovery()
+        # update and publish current blind states
+        if self.update_and_publish_blind_state_callback is not None:
+            for blind in self.blinds:
+                self.update_and_publish_blind_state_callback(blind, False, None, self)
 
     def on_disconnect(self, client: paho_mqtt.Client, userdata: Any, reason_code: paho_mqtt.ReasonCode):
         if reason_code.is_failure:
@@ -56,7 +70,7 @@ class MQTT:
         print("Msg: " + message.topic + " " + str(message.qos) + " " + str(message.payload))
 
         topic_parts = message.topic.split('/')
-        if len(topic_parts) != 5 or topic_parts[0] != self.config.topic or topic_parts[1] != 'blinds' or topic_parts[2] != 'mediola1' or topic_parts[4] != 'set': # FIXME mediola1 -> mediola
+        if len(topic_parts) != 5 or topic_parts[0] != self.config.topic or topic_parts[1] != 'blinds' or topic_parts[2] != 'mediola' or topic_parts[4] != 'set':
             self.log(debug=False, error=f'got invalid topic: {message.topic}')
             return
         blind_id_parts = topic_parts[3].split('_')
@@ -90,7 +104,7 @@ class MQTT:
             identifier = f'ER_{blind.adr}'
             deviceid = f'mediola_blinds_{self.config.host.replace(".", "")}'
             dtopic = f'{self.config.discovery_prefix}/cover/mediola_{identifier}/config'
-            topic = f'{self.config.topic}/blinds/mediola1/{identifier}' # FIXME mediola1 -> mediola
+            topic = f'{self.config.topic}/blinds/mediola/{identifier}'
 
             payload = {
                 'command_topic': f'{topic}/set',
@@ -114,7 +128,7 @@ class MQTT:
         
     def publish_blind_state(self, blind: Blind, state: BlindState):
         identifier = f'ER_{blind.adr}'
-        topic = f'{self.config.topic}/blinds/mediola1/{identifier}/state' # FIXME mediola1 -> mediola
+        topic = f'{self.config.topic}/blinds/mediola/{identifier}/state'
         self.mqtt_client.publish(topic, payload=state.text, retain=True)
         self.log(debug=True, args=f'Published state {state} for blind {blind} to topic {topic}')
 
