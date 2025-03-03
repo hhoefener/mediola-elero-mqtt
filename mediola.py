@@ -14,7 +14,7 @@ class Mediola:
     host: str
     password: str
     debug: bool
-    thread_stop_event: Optional[threading.Event] = None
+    thread_stop_events: dict[str, threading.Event] = {}
     
     def __init__(self, host: str, password: str, follow_up_time: int, debug: bool = False):
         self.host = host
@@ -106,8 +106,8 @@ class Mediola:
         # perform moving blind in thread to enable immediate return.
         # Otherwise if multiple blinds are moved in a row, they need to wait until
         # preceeding blinds have confirmed that they are moving
-        if self.thread_stop_event is not None:
-            self.thread_stop_event.set()
-        self.thread_stop_event = threading.Event()
-        threading.Thread(target=self._move_blind, args=(blind, command, self.thread_stop_event, mqtt)).start()
+        if blind.adr in self.thread_stop_events:
+            self.thread_stop_events[blind.adr].set()
+        self.thread_stop_events[blind.adr] = threading.Event()
+        threading.Thread(target=self._move_blind, args=(blind, command, self.thread_stop_events[blind.adr], mqtt)).start()
 
