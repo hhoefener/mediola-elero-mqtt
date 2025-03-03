@@ -27,14 +27,9 @@ class Mediola:
             BlindCommand.STOP: "02"
         }
 
-    def log(self, debug: bool = False, *args: Any, **kwargs: Any):
+    def log(self, debug: bool = False, **kwargs: Any):
         if not debug or self.debug:
-            values = ' '.join(map(str, args))
-            if kwargs:
-                kwarg_values = ' '.join(f'{key}={value}' for key, value in kwargs.items())
-                values = f'{values} {kwarg_values}'
-            print(datetime.datetime.now(), values)
-    
+            print(datetime.datetime.now(), ' '.join(f'{key}={value}' for key, value in kwargs.items()))
     
     def _request(self, payload: dict) -> dict:
         url = 'http://' + self.host + '/command'
@@ -46,7 +41,7 @@ class Mediola:
         if len(response.text) > 8:
             return json.loads(response.text[8:])
         else:
-            self.log(f'no response payload. Got response "{response.text}" for request payload {payload}', debug=True)
+            self.log(message=f'no response payload. Got response "{response.text}" for request payload {payload}', debug=True)
             return {}
     
     def _request_blind_state(self, blind: Blind) -> BlindState:
@@ -57,7 +52,7 @@ class Mediola:
                 break
             time.sleep(1)
 
-        self.log(f'{datetime.datetime.now()} Response for state request of blind {blind} is {response}', debug=True)
+        self.log(message=f'{datetime.datetime.now()} Response for state request of blind {blind} is {response}', debug=True)
         if response['state'] == 'A201':
             return BlindState.OPENED
         elif response['state'] == 'A202':
@@ -83,7 +78,7 @@ class Mediola:
         if mqtt is not None:
             mqtt.publish_blind_state(blind, state)
         if follow_up_if_moving and state in (BlindState.OPENING, BlindState.CLOSING):
-            self.log(f'{datetime.datetime.now()} Blind {blind} is moving ({state}). Starting another timer to follow up', debug=True)
+            self.log(message=f'{datetime.datetime.now()} Blind {blind} is moving ({state}). Starting another timer to follow up', debug=True)
             threading.Timer(self.follow_up_time, self.get_blind_state, (blind, True, thread_stop_event, mqtt)).start()
         return state
 
@@ -99,7 +94,7 @@ class Mediola:
             success_states.append(BlindState.STOPPED)
 
         while True:
-            self.log(f'{datetime.datetime.now()} sending command {command} for blind {blind}')
+            self.log(message=f'{datetime.datetime.now()} sending command {command} for blind {blind}')
             self._command_blind(blind, command)
             time.sleep(1)
             if thread_stop_event.is_set():
