@@ -82,6 +82,14 @@ class Mediola:
             threading.Timer(self.follow_up_time, self.get_blind_state, (blind, True, thread_stop_event, mqtt)).start()
         return state
 
+    def periodic_blind_state_publishing(self, blinds: list[Blind], mqtt: MQTT, interval_in_seconds: int):
+        self.log(message=f'{datetime.datetime.now()} Polling all blind states', debug=True)
+        for blind in blinds:
+            self.get_blind_state(blind, follow_up_if_moving=False, thread_stop_event=None, mqtt=mqtt)
+        self.log(message=f'{datetime.datetime.now()} Scheduling next polling in {interval_in_seconds} seconds', debug=True)
+        threading.Timer(interval_in_seconds, self.periodic_blind_state_publishing, (blinds, mqtt, interval_in_seconds)).start()
+
+
     def _move_blind(self, blind: Blind, command: BlindCommand, thread_stop_event: threading.Event, mqtt: Optional[MQTT]):
         success_states = []
         if command == BlindCommand.OPEN:

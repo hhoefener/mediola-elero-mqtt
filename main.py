@@ -8,6 +8,10 @@ def main():
     config = load_config()
     mediola = Mediola(config.mediola.host, config.mediola.password, config.mediola.follow_up_time, debug=True)
     mqtt = MQTT(config.mqtt, config.blinds, move_blind_callback=mediola.move_blind, debug=True)
+
+    mqtt.loop_start()
+
+    mediola.periodic_blind_state_publishing(config.blinds, mqtt, interval_in_seconds=900)
     
     mqtt.loop_forever()
 
